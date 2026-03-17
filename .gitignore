@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+temp_outputs/
+DEST/
+ORIGEN/
+.DS_Store
+.venv/
+venv/

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Separator Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="dashboard">
+        <!-- Side Panel -->
+        <aside class="side-panel">
+            <div class="brand">
+                <h1>Excel Separator</h1>
+                <p>Ferramenta inteligente para separação de planilhas administrativas por representante.</p>
+            </div>
+
+            <div class="upload-section">
+                <form id="uploadForm">
+                    <div class="upload-area" id="dropZone">
+                        <span class="upload-icon">📁</span>
+                        <p style="font-size: 0.85rem; font-weight: 500;">Anexe o arquivo Excel</p>
+                        <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">.xlsx ou .xlsm</p>
+                        <input type="file" id="fileInput" name="file" accept=".xlsx, .xlsm">
+                        <div class="file-info" id="fileInfo">✓ <span id="fileName"></span></div>
+                    </div>
+
+                    <!-- Column Selector -->
+                    <div class="column-select-section" id="columnSelectSection">
+                        <label class="column-select-label">Coluna para Separar</label>
+                        <div class="select-wrapper">
+                            <select id="columnSelect" class="custom-select">
+                                <option value="7">Carregando colunas...</option>
+                            </select>
+                            <div class="header-loader" id="headerLoader"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="processBtn">
+                        <span class="btn-text">Processar Tudo</span>
+                        <div class="loader" id="loader"></div>
+                    </button>
+
+                    <div id="statusMsg" class="status-msg"></div>
+                </form>
+            </div>
+
+            <!-- Compact Logs -->
+            <div class="logs-section" id="logsSection">
+                <div class="logs-header">
+                    <span>Console de Processamento</span>
+                </div>
+                <div class="logs-content" id="logsContent"></div>
+            </div>
+
+            <footer style="font-size: 0.7rem; color: #475569;">
+                &copy; 2026 Admin Pro Tool
+            </footer>
+        </aside>
+
+        <!-- Main Content area -->
+        <main class="main-content">
+            <!-- Welcome View (Shown initially) -->
+            <div class="welcome-msg" id="welcomeMsg">
+                <h2>Pronto para começar?</h2>
+                <p style="color: var(--text-dim); line-height: 1.6;">
+                    Envie sua planilha para separar os dados por qualquer coluna e gere arquivos individuais mantendo a formatação.
+                </p>
+            </div>
+
+            <!-- Results View (Shown after processing) -->
+            <div class="results-container" id="resultsContainer">
+                <div class="results-header">
+                    <div>
+                        <h3 id="resultTitle">Resultados</h3>
+                        <p id="fileCount" style="font-size: 0.85rem; color: var(--text-dim); margin-top: 4px;"></p>
+                    </div>
+                    <a href="#" class="btn-success" id="downloadAllBtn">Baixar Tudo (.ZIP)</a>
+                </div>
+
+                <div class="results-grid" id="resultsGrid">
+                    <!-- Cards will be injected here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const uploadForm = document.getElementById('uploadForm');
+        const processBtn = document.getElementById('processBtn');
+        const loader = document.getElementById('loader');
+        const btnText = document.querySelector('.btn-text');
+        const statusMsg = document.getElementById('statusMsg');
+        const logsSection = document.getElementById('logsSection');
+        const logsContent = document.getElementById('logsContent');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const fileCount = document.getElementById('fileCount');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const welcomeMsg = document.getElementById('welcomeMsg');
+        
+        // New elements
+        const columnSelectSection = document.getElementById('columnSelectSection');
+        const columnSelect = document.getElementById('columnSelect');
+        const headerLoader = document.getElementById('headerLoader');
+
+        fileInput.addEventListener('change', async () => {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                fileName.textContent = file.name;
+                fileInfo.style.display = 'block';
+                statusMsg.className = 'status-msg';
+                statusMsg.textContent = '';
+                
+                // Fetch headers as soon as file is selected
+                await fetchHeaders(file);
+            } else {
+                columnSelectSection.style.display = 'none';
+            }
+        });
+
+        async function fetchHeaders(file) {
+            columnSelectSection.style.display = 'block';
+            columnSelect.innerHTML = '<option value="">Lendo cabeçalhos...</option>';
+            columnSelect.disabled = true;
+            headerLoader.style.display = 'block';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/headers', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    columnSelect.innerHTML = '';
+                    
+                    data.headers.forEach(header => {
+                        const opt = document.createElement('option');
+                        opt.value = header.index;
+                        opt.textContent = `${header.letter}: ${header.name}`;
+                        // Default to Coluna G (7) if found
+                        if (header.letter === 'G') opt.selected = true;
+                        columnSelect.appendChild(opt);
+                    });
+                    
+                    if (data.headers.length === 0) {
+                        columnSelect.innerHTML = '<option value="7">Nenhum cabeçalho encontrado</option>';
+                    }
+                } else {
+                    columnSelect.innerHTML = '<option value="7">Erro ao ler colunas (Padrão: G)</option>';
+                }
+            } catch (err) {
+                columnSelect.innerHTML = '<option value="7">Erro de conexão (Padrão: G)</option>';
+            } finally {
+                columnSelect.disabled = false;
+                headerLoader.style.display = 'none';
+            }
+        }
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!fileInput.files.length) {
+                showStatus('Selecione um arquivo primeiro.', 'error');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const MAX_SIZE = 64 * 1024 * 1024; // 64MB
+
+            if (file.size > MAX_SIZE) {
+                showStatus('Arquivo muito grande (máximo 64MB).', 'error');
+                addLog('ERRO: O arquivo excede o limite de 64MB.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('column_index', columnSelect.value || 7);
+
+            // UI Feedback
+            processBtn.disabled = true;
+            loader.style.display = 'block';
+            btnText.textContent = 'Processando...';
+
+            // Clean view for new process
+            logsSection.style.display = 'block';
+            logsContent.innerHTML = '';
+            resultsContainer.style.display = 'none';
+            welcomeMsg.style.display = 'none';
+            addLog('Iniciando envio seguro...');
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    if (data.logs) {
+                        data.logs.forEach(log => addLog(log));
+                    }
+
+                    showResults(data.request_id, data.files, data.original_filename);
+                    showStatus('Sucesso!', 'success');
+                } else {
+                    let errorMsg = 'Erro no processamento.';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // If not JSON, maybe it's a 413 Payload Too Large or other HTML error
+                        if (response.status === 413) {
+                            errorMsg = 'Arquivo muito grande para o servidor.';
+                        } else {
+                            errorMsg = `Erro ${response.status}: Falha no servidor.`;
+                        }
+                    }
+                    showStatus(errorMsg, 'error');
+                    addLog('ERRO: ' + errorMsg);
+                }
+            } catch (err) {
+                showStatus('Erro de conexão.', 'error');
+                addLog('ERRO: Conexão interrompida.');
+            } finally {
+                processBtn.disabled = false;
+                loader.style.display = 'none';
+                btnText.textContent = 'Processar Tudo';
+            }
+        });
+
+        function addLog(text) {
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.textContent = text;
+            logsContent.appendChild(line);
+            logsContent.scrollTop = logsContent.scrollHeight;
+        }
+
+        function showResults(requestId, files, originalName) {
+            resultsContainer.style.display = 'block';
+            resultsGrid.innerHTML = '';
+            fileCount.textContent = `${files.length} representantes identificados e processados.`;
+
+            files.sort().forEach((name, index) => {
+                const card = document.createElement('div');
+                card.className = 'file-card';
+                card.style.animationDelay = `${index * 0.05}s`;
+                card.innerHTML = `
+                    <div class="file-card-name" title="${name}">${name}</div>
+                    <a href="/download/${requestId}/${encodeURIComponent(name)}" class="btn-card-download">Download</a>
+                `;
+                resultsGrid.appendChild(card);
+            });
+
+            downloadAllBtn.href = `/download_all/${requestId}`;
+            downloadAllBtn.download = (originalName || 'planilhas_separadas') + '.zip';
+        }
+
+        function showStatus(msg, type) {
+            statusMsg.textContent = msg;
+            statusMsg.className = `status-msg ${type}`;
+        }
+
+        // Drag & Drop
+        ['dragenter', 'dragover'].forEach(name => dropZone.addEventListener(name, () => dropZone.classList.add('dragover')));
+        ['dragleave', 'drop'].forEach(name => dropZone.addEventListener(name, () => dropZone.classList.remove('dragover')));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInput.files = e.dataTransfer.files;
+            fileInput.dispatchEvent(new Event('change'));
+        });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => dropZone.addEventListener(name, (e) => e.preventDefault()));
+    </script>
+</body>
+
+</html>
